@@ -1,0 +1,24 @@
+REMOTE = 'isucon3'
+APP_DIR = '/home/isucon/webapp/ruby'
+RSYNC_OPTIONS = %w(
+  --archive
+  --delete
+  --human-readable
+  --verbose
+  --exclude=vendor
+  --exclude=.bundle
+  --exclude=recipes
+  --exclude=tmp
+)
+
+task 'rsync' do
+  sh 'rsync', *RSYNC_OPTIONS, '.', "#{REMOTE}:#{APP_DIR}"
+end
+
+task 'rsync:dryrun' do
+  sh 'rsync', *RSYNC_OPTIONS, '--dry-run', '.', "#{REMOTE}:#{APP_DIR}"
+end
+
+task 'deploy' => [:rsync] do
+  sh "ssh -t #{REMOTE} #{APP_DIR}/deploy.sh"
+end
