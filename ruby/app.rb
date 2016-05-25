@@ -47,7 +47,7 @@ class Isucon3App < Sinatra::Base
         end
 
         headers "Cache-Control" => "private"
-        { "username" => user }
+        { "id" => user_id, "username" => user }
       else
         {}
       end
