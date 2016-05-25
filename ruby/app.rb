@@ -6,6 +6,7 @@ require 'dalli'
 require 'rack/session/dalli'
 require 'erubis'
 require 'tempfile'
+require 'redis'
 
 class Isucon3App < Sinatra::Base
   $stdout.sync = true
@@ -31,13 +32,25 @@ class Isucon3App < Sinatra::Base
     end
 
     def get_user
-      mysql = connection
       user_id = session["user_id"]
+
+
       if user_id
-        user = mysql.xquery("SELECT * FROM users WHERE id=?", user_id).first
+        user = redis.get("user-#{user_id}")
+
+        if user.nil?
+          mysql = connection
+          mysql.xquery("SELECT * FROM users").each do |row|
+            redis.set("user-#{row['id']}", row["username"])
+          end
+          user = redis.get("user-#{user_id}")
+        end
+
         headers "Cache-Control" => "private"
+        { "username" => user }
+      else
+        {}
       end
-      return user || {}
     end
 
     def require_user(user)
@@ -72,6 +85,10 @@ class Isucon3App < Sinatra::Base
       end
       base = "#{scheme}://#{request.host}#{port}#{request.script_name}"
       "#{base}#{path}"
+    end
+
+    def redis
+      @redis ||= Redis.new
     end
   end
 
