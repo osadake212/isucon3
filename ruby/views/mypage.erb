@@ -11,7 +11,7 @@
 <ul>
 <% memos.each do |memo| %>
 <li>
-  <a href="<%= url_for('/memo/') %><%= memo['id'] %>"><%= memo['content'].split(/\r?\n/).first %></a> <%= memo['created_at'] %>
+  <a href="<%= url_for('/memo/') %><%= memo['id'] %>"><%= memo['title'] %></a> <%= memo['created_at'] %>
 <% if memo['is_private'] == 1 %>
 [private]
 <% end %>
