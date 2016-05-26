@@ -74,12 +74,12 @@ class Isucon3App < Sinatra::Base
     end
 
     def memo_pages(page = 0)
-      memos = redis.get("memos-page-#{page}")
+      memos = redis.get("memo-page-#{page}")
 
       if memos
         JSON.parse(memos)
       else
-        memos = connection.query("SELECT m.*, username FROM memos m JOIN users u ON m.user = u.id WHERE is_private=0 ORDER BY created_at DESC, id DESC LIMIT 100 OFFSET #{page * 100}")
+        memos = connection.query("SELECT m.id, m.title, m.created_at, username FROM memos m JOIN users u ON m.user = u.id WHERE is_private=0 ORDER BY created_at DESC, id DESC LIMIT 100 OFFSET #{page * 100}")
         redis.set("memo-page-#{page}", memos.to_a.to_json)
         memos
       end
@@ -182,7 +182,7 @@ class Isucon3App < Sinatra::Base
 
     erb :mypage, :layout => :base, :locals => {
       :user  => user,
-      :memos => connection.xquery('SELECT id, content, is_private, created_at, updated_at FROM memos WHERE user=? ORDER BY created_at DESC', user["id"]),
+      :memos => connection.xquery('SELECT id, title, is_private, created_at, updated_at FROM memos WHERE user=? ORDER BY created_at DESC', user["id"]),
     }
   end
 
@@ -206,9 +206,8 @@ class Isucon3App < Sinatra::Base
     else
       cond = "AND is_private=0"
     end
-    results = mysql.xquery("SELECT * FROM memos WHERE user=? #{cond} ORDER BY created_at", memo["user"])
-    older = mysql.xquery("SELECT * FROM memos WHERE user = ? #{cond} AND created_at < ? ORDER BY created_at LIMIT 1", memo["user"], memo["created_at"]).first
-    newer = mysql.xquery("SELECT * FROM memos WHERE user = ? #{cond} AND created_at > ? ORDER BY created_at LIMIT 1", memo["user"], memo["created_at"]).first
+    older = mysql.xquery("SELECT id FROM memos WHERE user = ? #{cond} AND created_at < ? ORDER BY created_at LIMIT 1", memo["user"], memo["created_at"]).first
+    newer = mysql.xquery("SELECT id FROM memos WHERE user = ? #{cond} AND created_at > ? ORDER BY created_at LIMIT 1", memo["user"], memo["created_at"]).first
 
     erb :memo, :layout => :base, :locals => {
       :user  => user,
