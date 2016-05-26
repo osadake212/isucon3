@@ -43,8 +43,7 @@ class Isucon3App < Sinatra::Base
       user = redis.get("user-#{id}")
 
       if user.nil?
-        mysql = connection
-        mysql.xquery("SELECT * FROM users").each do |row|
+        connection.xquery("SELECT * FROM users").each do |row|
           redis.set("user-#{row['id']}", row["username"])
         end
         user = redis.get("user-#{id}")
@@ -87,7 +86,7 @@ class Isucon3App < Sinatra::Base
     end
 
     def clear_page_cache
-      redis.keys.select{ |key| key.match(/total/) }.each{ |key| redis.del(key) }
+      redis.keys.select{ |key| key.match(/^memo/) }.each{ |key| redis.del(key) }
     end
 
     def anti_csrf
@@ -109,7 +108,7 @@ class Isucon3App < Sinatra::Base
     end
 
     def redis
-      @redis ||= Redis.new
+      $redis ||= Redis.new
     end
 
     def markdown
@@ -118,34 +117,27 @@ class Isucon3App < Sinatra::Base
   end
 
   get '/' do
-    mysql = connection
-    user  = get_user
-
-    total = total_memo_page
-    memos = memo_pages
     erb :index, :layout => :base, :locals => {
-      :memos => memos,
+      :memos => memo_pages,
       :page  => 0,
-      :total => total,
-      :user  => user,
+      :total => total_memo_page,
+      :user  => get_user,
     }
   end
 
   get '/recent/:page' do
-    mysql = connection
-    user  = get_user
-
     page  = params["page"].to_i
-    total = total_memo_page
     memos = memo_pages(page)
+
     if memos.count == 0
       halt 404, "404 Not Found"
     end
+
     erb :index, :layout => :base, :locals => {
       :memos => memos,
       :page  => page,
-      :total => total,
-      :user  => user,
+      :total => total_memo_page,
+      :user  => get_user,
     }
   end
 
@@ -185,14 +177,12 @@ class Isucon3App < Sinatra::Base
   end
 
   get '/mypage' do
-    mysql = connection
     user  = get_user
     require_user(user)
 
-    memos = mysql.xquery('SELECT id, content, is_private, created_at, updated_at FROM memos WHERE user=? ORDER BY created_at DESC', user["id"])
     erb :mypage, :layout => :base, :locals => {
       :user  => user,
-      :memos => memos,
+      :memos => connection.xquery('SELECT id, content, is_private, created_at, updated_at FROM memos WHERE user=? ORDER BY created_at DESC', user["id"]),
     }
   end
 
