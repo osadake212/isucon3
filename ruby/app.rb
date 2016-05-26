@@ -225,11 +225,12 @@ class Isucon3App < Sinatra::Base
     anti_csrf
 
     mysql.xquery(
-      'INSERT INTO memos (user, content, is_private, created_at) VALUES (?, ?, ?, ?)',
+      'INSERT INTO memos (user, content, is_private, created_at, title) VALUES (?, ?, ?, ?, ?)',
       user["id"],
       params["content"],
       params["is_private"].to_i,
       Time.now,
+      params["content"].split("\n").first
     )
     clear_page_cache
     memo_id = mysql.last_id
