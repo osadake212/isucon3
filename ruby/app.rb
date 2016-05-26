@@ -35,23 +35,26 @@ class Isucon3App < Sinatra::Base
     def get_user
       user_id = session["user_id"]
 
-
       if user_id
-        user = redis.get("user-#{user_id}")
-
-        if user.nil?
-          mysql = connection
-          mysql.xquery("SELECT * FROM users").each do |row|
-            redis.set("user-#{row['id']}", row["username"])
-          end
-          user = redis.get("user-#{user_id}")
-        end
-
-        headers "Cache-Control" => "private"
-        { "id" => user_id, "username" => user }
+        get_user_by_id(user_id)
       else
         {}
       end
+    end
+
+    def get_user_by_id(id)
+      user = redis.get("user-#{id}")
+
+      if user.nil?
+        mysql = connection
+        mysql.xquery("SELECT * FROM users").each do |row|
+          redis.set("user-#{row['id']}", row["username"])
+        end
+        user = redis.get("user-#{id}")
+      end
+
+      headers "Cache-Control" => "private"
+      { "id" => id, "username" => user }
     end
 
     def require_user(user)
@@ -63,6 +66,31 @@ class Isucon3App < Sinatra::Base
 
     def gen_markdown(md)
       return markdown.render(md)
+    end
+
+    def total_memo_page
+      total = redis.get('memo-total-count')
+      return total if total
+
+      total = connection.xquery('SELECT count(*) AS c FROM memos WHERE is_private=0').first["c"]
+      redis.set('memo-total-count', total)
+      total
+    end
+
+    def memo_pages(page = 0)
+      memos = redis.get("memos-page-#{page}")
+
+      if memos
+        JSON.parse(memos)
+      else
+        memos = connection.query("SELECT m.*, username FROM memos m JOIN users u ON m.user = u.id WHERE is_private=0 ORDER BY created_at DESC, id DESC LIMIT 100 OFFSET #{page * 100}")
+        redis.set("memo-page-#{page}", memos.to_a.to_json)
+        memos
+      end
+    end
+
+    def clear_page_cache
+      redis.keys.select{ |key| key.match(/total/) }.each{ |key| redis.del(key) }
     end
 
     def anti_csrf
@@ -96,8 +124,8 @@ class Isucon3App < Sinatra::Base
     mysql = connection
     user  = get_user
 
-    total = mysql.query("SELECT count(*) AS c FROM memos WHERE is_private=0").first["c"]
-    memos = mysql.query("SELECT m.*, username FROM memos m JOIN users u ON m.user = u.id WHERE is_private=0 ORDER BY created_at DESC, id DESC LIMIT 100")
+    total = total_memo_page
+    memos = memo_pages
     erb :index, :layout => :base, :locals => {
       :memos => memos,
       :page  => 0,
@@ -111,8 +139,8 @@ class Isucon3App < Sinatra::Base
     user  = get_user
 
     page  = params["page"].to_i
-    total = mysql.xquery('SELECT count(*) AS c FROM memos WHERE is_private=0').first["c"]
-    memos = mysql.xquery("SELECT m.*, username FROM memos m JOIN users u ON m.user = u.id WHERE is_private=0 ORDER BY created_at DESC, id DESC LIMIT 100 OFFSET #{page * 100}")
+    total = total_memo_page
+    memos = memo_pages(page)
     if memos.count == 0
       halt 404, "404 Not Found"
     end
@@ -184,26 +212,17 @@ class Isucon3App < Sinatra::Base
         halt 404, "404 Not Found"
       end
     end
-    memo["username"] = mysql.xquery('SELECT username FROM users WHERE id=?', memo["user"]).first["username"]
+    memo["username"] = get_user_by_id(memo["user"])["username"]
     memo["content_html"] = gen_markdown(memo["content"])
     if user["id"] == memo["user"]
       cond = ""
     else
       cond = "AND is_private=0"
     end
-    memos = []
-    older = nil
-    newer = nil
     results = mysql.xquery("SELECT * FROM memos WHERE user=? #{cond} ORDER BY created_at", memo["user"])
-    results.each do |m|
-      memos.push(m)
-    end
-    0.upto(memos.count - 1).each do |i|
-      if memos[i]["id"] == memo["id"]
-        older = memos[i - 1] if i > 0
-        newer = memos[i + 1] if i < memos.count
-      end
-    end
+    older = mysql.xquery("SELECT * FROM memos WHERE user = ? #{cond} AND created_at < ? ORDER BY created_at LIMIT 1", memo["user"], memo["created_at"]).first
+    newer = mysql.xquery("SELECT * FROM memos WHERE user = ? #{cond} AND created_at > ? ORDER BY created_at LIMIT 1", memo["user"], memo["created_at"]).first
+
     erb :memo, :layout => :base, :locals => {
       :user  => user,
       :memo  => memo,
@@ -225,6 +244,7 @@ class Isucon3App < Sinatra::Base
       params["is_private"].to_i,
       Time.now,
     )
+    clear_page_cache
     memo_id = mysql.last_id
     redirect "/memo/#{memo_id}"
   end
