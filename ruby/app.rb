@@ -11,10 +11,7 @@ require 'redcarpet'
 
 class Isucon3App < Sinatra::Base
   $stdout.sync = true
-  use Rack::Session::Dalli, {
-    :key => 'isucon_session',
-    :cache => Dalli::Client.new('localhost:11211')
-  }
+  use Rack::Session::Cookie, key: 'isucon_session'
 
   helpers do
     set :erb, :escape_html => true
